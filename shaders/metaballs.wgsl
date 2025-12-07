@@ -79,11 +79,18 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   var color = bgColor;
   color += val * white * 0.5;
   if val < 1.0 {
-    var purpley = mix(coolPurple, purple, uv.y * 0.5 + uv.x * 0.25 * sin(t) * 0.3 + 0.4 * cos(t / 0.3));
-    color = mix(purpley, color, val);
+    // enhanced color variation with more gradient mixing
+    var colorMix = uv.y * 0.5 + uv.x * 0.25 * sin(t) * 0.3 + 0.4 * cos(t / 0.3);
+    var purpley = mix(coolPurple, purple, colorMix);
+    // add more variation with hotPink
+    var vibrant = mix(purpley, hotPink, sin(t * 0.5 + uv.x * 2.0) * 0.3 + 0.3);
+    color = mix(vibrant, color, val);
   }
   
-  // apply hue shift
-  let rgb = applyHue(color.rgb, U.hue);
-  return vec4<f32>(rgb, color.a);
+  // apply hue shift only if non-zero
+  if (abs(U.hue) > 0.001) {
+    let rgb = applyHue(color.rgb, U.hue);
+    return vec4<f32>(rgb, color.a);
+  }
+  return color;
   }

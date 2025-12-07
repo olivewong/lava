@@ -83,7 +83,10 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
                  smoothstep(0.2, 0.8, 1.0 - abs(uv.y - 0.5) * 2.0);
   waterColor += vec3<f32>(0.0, 0.2, 0.4) * (1.0 - edgeGlow) * 0.3;  // 0.3 = glow intensity
   
-  // apply hue shift
-  let rgb = applyHue(waterColor, U.hue);
-  return vec4<f32>(rgb, 1.0);
+  // apply hue shift only if non-zero
+  if (abs(U.hue) > 0.001) {
+    let rgb = applyHue(waterColor, U.hue);
+    return vec4<f32>(rgb, 1.0);
+  }
+  return vec4<f32>(waterColor, 1.0);
 }

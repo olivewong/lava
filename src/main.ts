@@ -55,10 +55,10 @@ function createUniformBuffer(
   const data = new Float32Array([
     resolution[0], resolution[1], // vec2<f32> resolution
     time,                          // f32 time
-    params.hue ?? 0,               // f32 hue
-    params.speed ?? 1,             // f32 speed
-    params.size ?? 0.5,            // f32 param1 (size)
-    params.sparkliness ?? 0,       // f32 param2 (sparkliness or unused)
+    params.hue,                    // f32 hue
+    params.speed,                  // f32 speed
+    params.size,                   // f32 param1 (size)
+    params.sparkliness,            // f32 param2 (sparkliness or unused)
     0.0,                           // f32 pad
   ]);
 
@@ -199,10 +199,10 @@ async function main() {
       canvas.width,
       canvas.height,
       currentTime,
-      currentParams.hue ?? 0,
-      currentParams.speed ?? 1,
-      currentParams.size ?? 0.5,
-      currentParams.sparkliness ?? 0,
+      currentParams.hue,
+      currentParams.speed,
+      currentParams.size,
+      currentParams.sparkliness,
       0.0,
     ]);
     device.queue.writeBuffer(uniformBuffer, 0, data);
