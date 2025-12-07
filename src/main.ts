@@ -70,7 +70,7 @@ function createRenderPipeline(
 
 async function getAvailableShaders(): Promise<string[]> {
   // for now, hardcode. could fetch a manifest or scan directory in the future
-  return ['metaballs'];
+  return ['metaballs', 'pool_reflections'];
 }
 
 async function main() {
