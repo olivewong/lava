@@ -73,8 +73,35 @@ async function getAvailableShaders(): Promise<string[]> {
   return ['metaballs', 'pool_reflections'];
 }
 
+function showError() {
+  const errorMsg = document.getElementById('error-message');
+  if (errorMsg) errorMsg.style.display = 'block';
+  const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+  if (canvas) canvas.style.display = 'none';
+  const select = document.getElementById('shader-select') as HTMLSelectElement;
+  if (select) select.style.display = 'none';
+}
+
 async function main() {
-  const { device, context, format } = await initWebGPU();
+  if (!navigator.gpu) {
+    showError();
+    return;
+  }
+
+  let device: GPUDevice;
+  let context: GPUCanvasContext;
+  let format: GPUTextureFormat;
+
+  try {
+    const result = await initWebGPU();
+    device = result.device;
+    context = result.context;
+    format = result.format;
+  } catch (error) {
+    showError();
+    return;
+  }
+
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
   const select = document.getElementById('shader-select') as HTMLSelectElement;
 
@@ -146,5 +173,7 @@ async function main() {
   render();
 }
 
-main().catch(console.error);
+main().catch(() => {
+  showError();
+});
 
