@@ -10,9 +10,13 @@
   <div id="error-message" style="display: none;">
     ur browser doesnt support webgpu. boooo update it
   </div>
-  <select id="shader-select">
-    <option value="metaballs">metaballs</option>
-  </select>
+  <div id="controls">
+    <select id="shader-select">
+      <option value="metaballs">metaballs</option>
+    </select>
+    <button id="params-toggle">⚙</button>
+  </div>
+  <div id="params-panel" style="display: none;"></div>
   <canvas id="canvas"></canvas>
   <script type="module" src="dist/main.js"></script>
 </body>

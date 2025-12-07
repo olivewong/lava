@@ -1,5 +1,13 @@
 
-struct Globals { resolution: vec2<f32>, time: f32, _pad: f32 }
+struct Globals { 
+  resolution: vec2<f32>, 
+  time: f32, 
+  hue: f32,
+  speed: f32,
+  size: f32,
+  param2: f32,
+  _pad: f32 
+}
 @group(0) @binding(0) var<uniform> U : Globals;
 
 const EDGE: f32 = 0.60;   // iso-level; higher = thinner blobs
@@ -17,17 +25,15 @@ fn vs(@builtin(vertex_index) vid : u32) -> @builtin(position) vec4<f32> {
 fn getBallPos(index: u32, t: f32) -> vec2<f32> {
   // lissajous curve for animating the balls
   let phase = f32(index) % f32(NUM_BALLS);
-  let speed = f32(index) * f32(index); // separate balls
+  let speedMult = f32(index) * f32(index); // separate balls
   let blobPos: vec2<f32> = vec2<f32>(
-    cos(t + phase * speed),
-    sin(t * 0.2 - f32(index) / f32(NUM_BALLS) * speed)
+    cos(t * U.speed + phase * speedMult),
+    sin(t * U.speed * 0.2 - f32(index) / f32(NUM_BALLS) * speedMult)
   );
   return blobPos;
 }
 
-fn gaussian(d: f32, r: f32) -> f32 {
-  return exp(-(d*d)/(r*r));
-}
+// gaussian is in common.wgsl
 
 fn mix3(a:vec4<f32>,b:vec4<f32>,c: vec4<f32>, v: f32) -> vec4<f32> {
   // v should be 0-1
@@ -60,7 +66,7 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   let t = U.time;
   var val = 0.0;
   for (var i: u32 = 0u; i < NUM_BALLS; i++) {
-    var ballSize = 0.3 + f32(i % NUM_BALLS) / f32(NUM_BALLS) * 0.2 ;
+    var ballSize = (0.2 + f32(i % NUM_BALLS) / f32(NUM_BALLS) * 0.15) * U.size;
     var blobPos = getBallPos(i, t);
     let d = distance(blobPos, uv);
     val += gaussian(d, ballSize);
@@ -76,5 +82,8 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
     var purpley = mix(coolPurple, purple, uv.y * 0.5 + uv.x * 0.25 * sin(t) * 0.3 + 0.4 * cos(t / 0.3));
     color = mix(purpley, color, val);
   }
-  return color;
+  
+  // apply hue shift
+  let rgb = applyHue(color.rgb, U.hue);
+  return vec4<f32>(rgb, color.a);
   }
