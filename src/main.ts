@@ -1,6 +1,7 @@
 /// <reference types="@webgpu/types" />
 
-import { shaderParamDefs, getDefaultParams, type ShaderParams, type ParamDef } from './params.js';
+import { shaderParamDefs, getDefaultParams, type ShaderParams, type ParamDef, type ParamMusicMode, type ParamMusicConfig } from './params.js';
+import { initAudio, type AudioAnalysis, type AudioMode } from './audio.js';
 
 async function initWebGPU(): Promise<{ device: GPUDevice; context: GPUCanvasContext; format: GPUTextureFormat }> {
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -125,11 +126,16 @@ async function main() {
   const select = document.getElementById('shader-select') as HTMLSelectElement;
   const paramsPanel = document.getElementById('params-panel') as HTMLDivElement;
   const paramsToggle = document.getElementById('params-toggle') as HTMLButtonElement;
+  const musicToggle = document.getElementById('music-toggle') as HTMLButtonElement;
 
   let currentShader = 'metaballs';
   let currentParams: ShaderParams = getDefaultParams(currentShader);
+  let paramMusicConfig: ParamMusicConfig = {};
   let pipeline: GPURenderPipeline | null = null;
   let uniformBuffer: GPUBuffer | null = null;
+  let isMusicMode = false;
+  let audioAnalysis: AudioAnalysis = { loudness: 0, beat: 0, music: 0 };
+  let stopAudio: (() => void) | null = null;
 
   const shaders = await getAvailableShaders();
   shaders.forEach(name => {
@@ -139,6 +145,29 @@ async function main() {
     if (name === currentShader) option.selected = true;
     select.appendChild(option);
   });
+
+  function getParamValue(paramName: string, def: ParamDef): number {
+    if (!isMusicMode) {
+      return currentParams[paramName] ?? def.default;
+    }
+
+    const musicMode = paramMusicConfig[paramName] ?? 'none';
+    if (musicMode === 'none') {
+      return currentParams[paramName] ?? def.default;
+    }
+
+    let audioValue = 0;
+    if (musicMode === 'loudness') {
+      audioValue = audioAnalysis.loudness;
+    } else if (musicMode === 'beat') {
+      audioValue = audioAnalysis.beat;
+    } else if (musicMode === 'music') {
+      audioValue = audioAnalysis.music;
+    }
+
+    // map audio value (0-1) to param range
+    return def.min + audioValue * (def.max - def.min);
+  }
 
   function updateParamsPanel() {
     if (!paramsPanel) return;
@@ -153,10 +182,13 @@ async function main() {
     defs.forEach(def => {
       const group = document.createElement('div');
       group.className = 'param-group';
+      group.dataset.paramName = def.name;
       
       const label = document.createElement('div');
       label.className = 'param-label';
-      label.innerHTML = `<span>${def.name}</span><span>${currentParams[def.name]?.toFixed(2) ?? def.default.toFixed(2)}</span>`;
+      label.dataset.paramName = def.name;
+      const currentValue = getParamValue(def.name, def);
+      label.innerHTML = `<span>${def.name}</span><span>${currentValue.toFixed(2)}</span>`;
       
       const slider = document.createElement('input');
       slider.type = 'range';
@@ -165,15 +197,48 @@ async function main() {
       slider.max = def.max.toString();
       slider.step = (def.step ?? 0.01).toString();
       slider.value = (currentParams[def.name] ?? def.default).toString();
+      slider.disabled = isMusicMode && paramMusicConfig[def.name] !== 'none' && paramMusicConfig[def.name] !== undefined;
       
       slider.addEventListener('input', () => {
         const value = parseFloat(slider.value);
         currentParams[def.name] = value;
-        label.innerHTML = `<span>${def.name}</span><span>${value.toFixed(2)}</span>`;
+        const displayValue = getParamValue(def.name, def);
+        label.innerHTML = `<span>${def.name}</span><span>${displayValue.toFixed(2)}</span>`;
+      });
+      
+      const musicSelect = document.createElement('select');
+      musicSelect.className = 'param-music-select';
+      const modes: Array<{ value: ParamMusicMode; label: string }> = [
+        { value: 'none', label: 'manual' },
+        { value: 'loudness', label: 'loudness' },
+        { value: 'beat', label: 'beat' },
+        { value: 'music', label: 'music' },
+      ];
+      modes.forEach(mode => {
+        const option = document.createElement('option');
+        option.value = mode.value;
+        option.textContent = mode.label;
+        if ((paramMusicConfig[def.name] ?? 'none') === mode.value) {
+          option.selected = true;
+        }
+        musicSelect.appendChild(option);
+      });
+      
+      musicSelect.addEventListener('change', () => {
+        const mode = musicSelect.value as ParamMusicMode;
+        paramMusicConfig[def.name] = mode;
+        if (mode === 'none') {
+          slider.disabled = false;
+        } else {
+          slider.disabled = isMusicMode;
+        }
       });
       
       group.appendChild(label);
       group.appendChild(slider);
+      if (isMusicMode) {
+        group.appendChild(musicSelect);
+      }
       paramsPanel.appendChild(group);
     });
   }
@@ -181,6 +246,32 @@ async function main() {
   paramsToggle.addEventListener('click', () => {
     if (paramsPanel) {
       paramsPanel.style.display = paramsPanel.style.display === 'none' ? 'block' : 'none';
+    }
+  });
+
+  musicToggle.addEventListener('click', async () => {
+    if (isMusicMode) {
+      // disable music mode
+      if (stopAudio) {
+        stopAudio();
+        stopAudio = null;
+      }
+      isMusicMode = false;
+      musicToggle.classList.remove('active');
+      updateParamsPanel();
+    } else {
+      // enable music mode
+      try {
+        stopAudio = await initAudio((analysis) => {
+          audioAnalysis = analysis;
+        });
+        isMusicMode = true;
+        musicToggle.classList.add('active');
+        updateParamsPanel();
+      } catch (error) {
+        console.error('failed to init audio:', error);
+        alert('could not access microphone. check permissions.');
+      }
     }
   });
 
@@ -195,14 +286,29 @@ async function main() {
   function updateUniformBuffer() {
     if (!uniformBuffer) return;
     const currentTime = (performance.now() - startTime) / 1000;
+    
+    const defs = shaderParamDefs[currentShader] || [];
+    const hue = defs.find(d => d.name === 'hue') 
+      ? getParamValue('hue', defs.find(d => d.name === 'hue')!) 
+      : 0;
+    const speed = defs.find(d => d.name === 'speed')
+      ? getParamValue('speed', defs.find(d => d.name === 'speed')!)
+      : 1;
+    const size = defs.find(d => d.name === 'size')
+      ? getParamValue('size', defs.find(d => d.name === 'size')!)
+      : 0.5;
+    const sparkliness = defs.find(d => d.name === 'sparkliness')
+      ? getParamValue('sparkliness', defs.find(d => d.name === 'sparkliness')!)
+      : 0;
+    
     const data = new Float32Array([
       canvas.width,
       canvas.height,
       currentTime,
-      currentParams.hue,
-      currentParams.speed,
-      currentParams.size,
-      currentParams.sparkliness,
+      hue,
+      speed,
+      size,
+      sparkliness,
       0.0,
     ]);
     device.queue.writeBuffer(uniformBuffer, 0, data);
@@ -215,16 +321,30 @@ async function main() {
     const target = e.target as HTMLSelectElement;
     currentShader = target.value;
     currentParams = getDefaultParams(currentShader);
+    paramMusicConfig = {}; // reset music config when switching shaders
     await loadShaderAndCreatePipeline(currentShader);
     updateParamsPanel();
   });
 
   let startTime = performance.now();
 
+  function updateParamLabels() {
+    if (!paramsPanel || !isMusicMode) return;
+    const defs = shaderParamDefs[currentShader] || [];
+    defs.forEach(def => {
+      const label = paramsPanel.querySelector(`[data-param-name="${def.name}"].param-label`) as HTMLElement;
+      if (label && paramMusicConfig[def.name] !== 'none' && paramMusicConfig[def.name] !== undefined) {
+        const displayValue = getParamValue(def.name, def);
+        label.innerHTML = `<span>${def.name}</span><span>${displayValue.toFixed(2)}</span>`;
+      }
+    });
+  }
+
   function render() {
     if (!pipeline || !uniformBuffer) return;
 
     updateUniformBuffer();
+    updateParamLabels();
 
     const encoder = device.createCommandEncoder();
     const pass = encoder.beginRenderPass({

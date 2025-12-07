@@ -39,6 +39,7 @@ body {
   background: rgba(0, 0, 0, 0.9);
 }
 
+#music-toggle,
 #params-toggle {
   width: 36px;
   height: 36px;
@@ -54,8 +55,13 @@ body {
   justify-content: center;
 }
 
+#music-toggle:hover,
 #params-toggle:hover {
   background: rgba(0, 0, 0, 0.9);
+}
+
+#music-toggle.active {
+  background: rgba(100, 0, 200, 0.7);
 }
 
 #params-panel {
@@ -90,6 +96,19 @@ body {
 .param-slider {
   width: 100%;
   margin-bottom: 8px;
+}
+
+.param-music-select {
+  width: 100%;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  font-family: monospace;
+  font-size: 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
 }
 
 #error-message {

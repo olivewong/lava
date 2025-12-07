@@ -10,6 +10,12 @@ export type ShaderParams = {
   [key: string]: number;
 };
 
+export type ParamMusicMode = 'none' | 'loudness' | 'beat' | 'music';
+
+export type ParamMusicConfig = {
+  [paramName: string]: ParamMusicMode;
+};
+
 export const shaderParamDefs: Record<string, ParamDef[]> = {
   metaballs: [
     { name: 'hue', min: 0, max: 1, default: 0, step: 0.01 },
