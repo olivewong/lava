@@ -29,6 +29,16 @@ export const shaderParamDefs: Record<string, ParamDef[]> = {
     { name: 'sparkliness', min: 0, max: 1, default: 0.2, step: 0.01 },
   ],
   sun: [],
+  night_sky: [
+    { name: 'hue', min: 0, max: 1, default: 0, step: 0.01 },
+    { name: 'speed', min: 0, max: 2, default: 0.5, step: 0.1 },
+  ],
+  night_sky_northern_lights: [
+    { name: 'hue', min: 0, max: 1, default: 0, step: 0.01 },
+    { name: 'speed', min: 0, max: 2, default: 0.3, step: 0.1 },
+    { name: 'size', min: 0.5, max: 3, default: 1.5, step: 0.1 },
+    { name: 'sparkliness', min: 0, max: 1, default: 0.3, step: 0.01 },
+  ],
 };
 
 export function getDefaultParams(shaderName: string): ShaderParams {
