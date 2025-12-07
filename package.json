@@ -1,0 +1,14 @@
+{
+  "name": "lava",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@webgpu/types": "^0.1.0"
+  }
+}
+
