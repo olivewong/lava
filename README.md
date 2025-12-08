@@ -1,4 +1,5 @@
 # lava
+https://olivewong.github.io/lava/
 
 ### ✨ webgpu vibes ✨
 i got a projector and wanted to make nice visuals 
