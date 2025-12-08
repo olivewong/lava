@@ -35,13 +35,24 @@ jobs:
       - name: Build
         run: bun run build
       
+      - name: Verify build
+        run: |
+          ls -la dist/
+          test -f dist/main.js || exit 1
+      
       - name: Setup Pages
         uses: actions/configure-pages@v4
       
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: |
+            index.html
+            style.css
+            dist/
+            shaders/
+            assets/
+            .nojekyll
       
       - name: Deploy to GitHub Pages
         id: deployment
