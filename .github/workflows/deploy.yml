@@ -40,22 +40,13 @@ jobs:
           ls -la dist/
           test -f dist/main.js || exit 1
       
-      - name: Prepare deployment
-        run: |
-          mkdir -p _site
-          cp index.html style.css _site/
-          cp -r dist _site/
-          cp -r shaders _site/
-          cp -r assets _site/
-          cp .nojekyll _site/ 2>/dev/null || echo "" > _site/.nojekyll
-      
       - name: Setup Pages
         uses: actions/configure-pages@v4
       
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '_site'
+          path: '.'
       
       - name: Deploy to GitHub Pages
         id: deployment
