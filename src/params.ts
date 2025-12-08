@@ -10,7 +10,7 @@ export type ShaderParams = {
   [key: string]: number;
 };
 
-export type ParamMusicMode = 'none' | 'loudness' | 'beat' | 'music';
+export type ParamMusicMode = 'none' | 'loudness';
 
 export type ParamMusicConfig = {
   [paramName: string]: ParamMusicMode;

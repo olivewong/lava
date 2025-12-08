@@ -111,7 +111,6 @@ async function main() {
     const projectionToggle = document.getElementById('projection-toggle');
     const projectionToolbar = document.getElementById('projection-toolbar');
     const shapePanel = document.getElementById('shape-panel');
-    const toolLines = document.getElementById('tool-lines');
     const toolRectangle = document.getElementById('tool-rectangle');
     let currentShader = 'metaballs';
     let currentParams = getDefaultParams(currentShader);
@@ -119,11 +118,11 @@ async function main() {
     let pipeline = null;
     let uniformBuffer = null;
     let isMusicMode = false;
-    let audioAnalysis = { loudness: 0, beat: 0, music: 0 };
+    let audioAnalysis = { loudness: 0 };
     let stopAudio = null;
     // projection mapping state
     let isProjectionMode = false;
-    let currentTool = 'lines';
+    let currentTool = 'rectangle';
     let shapes = [];
     let selectedShapeId = null;
     let drawingState = {
@@ -163,12 +162,6 @@ async function main() {
         let audioValue = 0;
         if (musicMode === 'loudness') {
             audioValue = audioAnalysis.loudness;
-        }
-        else if (musicMode === 'beat') {
-            audioValue = audioAnalysis.beat;
-        }
-        else if (musicMode === 'music') {
-            audioValue = audioAnalysis.music;
         }
         // map audio value (0-1) to param range
         return def.min + audioValue * (def.max - def.min);
@@ -210,8 +203,6 @@ async function main() {
             const modes = [
                 { value: 'none', label: 'manual' },
                 { value: 'loudness', label: 'loudness' },
-                { value: 'beat', label: 'beat' },
-                { value: 'music', label: 'music' },
             ];
             modes.forEach(mode => {
                 const option = document.createElement('option');
@@ -294,14 +285,6 @@ async function main() {
                 const h = Math.abs(p2.y - p1.y);
                 ctx.strokeRect(x, y, w, h);
             }
-            else if (currentTool === 'lines' && drawingState.currentPoints.length >= 1) {
-                ctx.beginPath();
-                ctx.moveTo(drawingState.currentPoints[0].x, drawingState.currentPoints[0].y);
-                for (let i = 1; i < drawingState.currentPoints.length; i++) {
-                    ctx.lineTo(drawingState.currentPoints[i].x, drawingState.currentPoints[i].y);
-                }
-                ctx.stroke();
-            }
         }
     }
     function updateShapePanel() {
@@ -376,16 +359,6 @@ async function main() {
             updateShapePanel();
         }
     });
-    toolLines.addEventListener('click', () => {
-        currentTool = 'lines';
-        toolLines.classList.add('active');
-        toolRectangle.classList.remove('active');
-    });
-    toolRectangle.addEventListener('click', () => {
-        currentTool = 'rectangle';
-        toolRectangle.classList.add('active');
-        toolLines.classList.remove('active');
-    });
     if (drawCanvas) {
         drawCanvas.addEventListener('mousedown', (e) => {
             if (!isProjectionMode)
@@ -396,15 +369,6 @@ async function main() {
             if (currentTool === 'rectangle') {
                 drawingState.isDrawing = true;
                 drawingState.currentPoints = [{ x, y }];
-            }
-            else if (currentTool === 'lines') {
-                if (!drawingState.isDrawing) {
-                    drawingState.isDrawing = true;
-                    drawingState.currentPoints = [{ x, y }];
-                }
-                else {
-                    drawingState.currentPoints.push({ x, y });
-                }
             }
             redrawShapes();
         });
@@ -419,20 +383,6 @@ async function main() {
                 redrawShapes();
             }
         });
-        drawCanvas.addEventListener('dblclick', (e) => {
-            if (!isProjectionMode || !drawingState.isDrawing || currentTool !== 'lines')
-                return;
-            // finish line drawing on double click
-            if (drawingState.currentPoints.length >= 2) {
-                const shape = createShape('lines', [...drawingState.currentPoints], currentShader, { ...currentParams });
-                shapes.push(shape);
-                selectedShapeId = shape.id;
-                drawingState.isDrawing = false;
-                drawingState.currentPoints = [];
-                redrawShapes();
-                updateShapePanel();
-            }
-        });
         drawCanvas.addEventListener('mouseup', (e) => {
             if (!isProjectionMode || !drawingState.isDrawing)
                 return;
@@ -444,6 +394,14 @@ async function main() {
                 drawingState.currentPoints = [];
                 redrawShapes();
                 updateShapePanel();
+            }
+        });
+        // escape key to cancel drawing
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && isProjectionMode && drawingState.isDrawing) {
+                drawingState.isDrawing = false;
+                drawingState.currentPoints = [];
+                redrawShapes();
             }
         });
     }
@@ -589,7 +547,6 @@ async function main() {
                         pass.draw(3);
                     }
                 }
-                // TODO: handle lines/polygons with stencil buffer or render to texture
             }
             // reset scissor rect to full canvas
             pass.setScissorRect(0, 0, canvas.width, canvas.height);
