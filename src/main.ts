@@ -2,6 +2,7 @@
 
 import { shaderParamDefs, getDefaultParams, type ShaderParams, type ParamDef, type ParamMusicMode, type ParamMusicConfig } from './params.js';
 import { initAudio, type AudioAnalysis, type AudioMode } from './audio.js';
+import { createShape, drawShapeOnCanvas, pointInShape, type Shape, type ShapeType, type Point, type DrawingState } from './projection.js';
 
 async function initWebGPU(): Promise<{ device: GPUDevice; context: GPUCanvasContext; format: GPUTextureFormat }> {
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -127,10 +128,16 @@ async function main() {
   }
 
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+  const drawCanvas = document.getElementById('draw-canvas') as HTMLCanvasElement;
   const select = document.getElementById('shader-select') as HTMLSelectElement;
   const paramsPanel = document.getElementById('params-panel') as HTMLDivElement;
   const paramsToggle = document.getElementById('params-toggle') as HTMLButtonElement;
   const musicToggle = document.getElementById('music-toggle') as HTMLButtonElement;
+  const projectionToggle = document.getElementById('projection-toggle') as HTMLButtonElement;
+  const projectionToolbar = document.getElementById('projection-toolbar') as HTMLDivElement;
+  const shapePanel = document.getElementById('shape-panel') as HTMLDivElement;
+  const toolLines = document.getElementById('tool-lines') as HTMLButtonElement;
+  const toolRectangle = document.getElementById('tool-rectangle') as HTMLButtonElement;
 
   let currentShader = 'metaballs';
   let currentParams: ShaderParams = getDefaultParams(currentShader);
@@ -140,6 +147,31 @@ async function main() {
   let isMusicMode = false;
   let audioAnalysis: AudioAnalysis = { loudness: 0, beat: 0, music: 0 };
   let stopAudio: (() => void) | null = null;
+  
+  // projection mapping state
+  let isProjectionMode = false;
+  let currentTool: ShapeType = 'lines';
+  let shapes: Shape[] = [];
+  let selectedShapeId: string | null = null;
+  let drawingState: DrawingState = {
+    isDrawing: false,
+    currentPoints: [],
+    currentShape: null,
+  };
+  
+  // cache pipelines and buffers for shapes
+  const shapePipelines: Map<string, GPURenderPipeline> = new Map();
+  const shapeBuffers: Map<string, GPUBuffer> = new Map();
+  
+  // setup drawing canvas
+  if (drawCanvas) {
+    drawCanvas.width = window.innerWidth;
+    drawCanvas.height = window.innerHeight;
+    window.addEventListener('resize', () => {
+      drawCanvas.width = window.innerWidth;
+      drawCanvas.height = window.innerHeight;
+    });
+  }
 
   const shaders = await getAvailableShaders();
   shaders.forEach(name => {
@@ -279,6 +311,210 @@ async function main() {
     }
   });
 
+  function redrawShapes() {
+    if (!drawCanvas) return;
+    const ctx = drawCanvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    shapes.forEach(shape => {
+      drawShapeOnCanvas(ctx, shape, shape.id === selectedShapeId);
+    });
+    
+    if (drawingState.isDrawing && drawingState.currentPoints.length > 0) {
+      ctx.strokeStyle = '#ffff00';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      
+      if (currentTool === 'rectangle' && drawingState.currentPoints.length >= 2) {
+        const [p1, p2] = drawingState.currentPoints;
+        const x = Math.min(p1.x, p2.x);
+        const y = Math.min(p1.y, p2.y);
+        const w = Math.abs(p2.x - p1.x);
+        const h = Math.abs(p2.y - p1.y);
+        ctx.strokeRect(x, y, w, h);
+      } else if (currentTool === 'lines' && drawingState.currentPoints.length >= 1) {
+        ctx.beginPath();
+        ctx.moveTo(drawingState.currentPoints[0].x, drawingState.currentPoints[0].y);
+        for (let i = 1; i < drawingState.currentPoints.length; i++) {
+          ctx.lineTo(drawingState.currentPoints[i].x, drawingState.currentPoints[i].y);
+        }
+        ctx.stroke();
+      }
+    }
+  }
+
+  function updateShapePanel() {
+    if (!shapePanel) return;
+    shapePanel.innerHTML = '';
+    
+    if (shapes.length === 0) {
+      shapePanel.innerHTML = '<div style="color: rgba(255,255,255,0.5);">no shapes</div>';
+      return;
+    }
+    
+    shapes.forEach(shape => {
+      const item = document.createElement('div');
+      item.className = 'shape-item';
+      if (shape.id === selectedShapeId) {
+        item.classList.add('selected');
+      }
+      
+      const label = document.createElement('div');
+      label.style.marginBottom = '4px';
+      label.textContent = `${shape.type} - ${getShaderDisplayName(shape.shader)}`;
+      
+      const shaderSelect = document.createElement('select');
+      shaderSelect.className = 'shape-shader-select';
+      shaderSelect.style.cssText = 'width: 100%; padding: 4px; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 2px; font-family: monospace; font-size: 10px;';
+      
+      shaders.forEach(s => {
+        const option = document.createElement('option');
+        option.value = s;
+        option.textContent = getShaderDisplayName(s);
+        if (s === shape.shader) {
+          option.selected = true;
+        }
+        shaderSelect.appendChild(option);
+      });
+      
+      shaderSelect.addEventListener('change', async () => {
+        shape.shader = shaderSelect.value;
+        shape.params = getDefaultParams(shape.shader);
+        label.textContent = `${shape.type} - ${getShaderDisplayName(shape.shader)}`;
+        
+        // clear cached pipeline/buffer for this shape
+        const oldPipeline = shapePipelines.get(shape.id);
+        const oldBuffer = shapeBuffers.get(shape.id);
+        if (oldPipeline) shapePipelines.delete(shape.id);
+        if (oldBuffer) {
+          oldBuffer.destroy();
+          shapeBuffers.delete(shape.id);
+        }
+      });
+      
+      item.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).tagName !== 'SELECT') {
+          selectedShapeId = shape.id;
+          updateShapePanel();
+          redrawShapes();
+        }
+      });
+      
+      item.appendChild(label);
+      item.appendChild(shaderSelect);
+      shapePanel.appendChild(item);
+    });
+  }
+
+  projectionToggle.addEventListener('click', () => {
+    isProjectionMode = !isProjectionMode;
+    projectionToggle.classList.toggle('active', isProjectionMode);
+    
+    if (projectionToolbar) {
+      projectionToolbar.style.display = isProjectionMode ? 'flex' : 'none';
+    }
+    if (drawCanvas) {
+      drawCanvas.style.display = isProjectionMode ? 'block' : 'none';
+    }
+    if (shapePanel) {
+      shapePanel.style.display = isProjectionMode ? 'block' : 'none';
+    }
+    
+    if (isProjectionMode) {
+      redrawShapes();
+      updateShapePanel();
+    }
+  });
+
+  toolLines.addEventListener('click', () => {
+    currentTool = 'lines';
+    toolLines.classList.add('active');
+    toolRectangle.classList.remove('active');
+  });
+
+  toolRectangle.addEventListener('click', () => {
+    currentTool = 'rectangle';
+    toolRectangle.classList.add('active');
+    toolLines.classList.remove('active');
+  });
+
+  if (drawCanvas) {
+    drawCanvas.addEventListener('mousedown', (e) => {
+      if (!isProjectionMode) return;
+      
+      const rect = drawCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      if (currentTool === 'rectangle') {
+        drawingState.isDrawing = true;
+        drawingState.currentPoints = [{ x, y }];
+      } else if (currentTool === 'lines') {
+        if (!drawingState.isDrawing) {
+          drawingState.isDrawing = true;
+          drawingState.currentPoints = [{ x, y }];
+        } else {
+          drawingState.currentPoints.push({ x, y });
+        }
+      }
+      
+      redrawShapes();
+    });
+
+    drawCanvas.addEventListener('mousemove', (e) => {
+      if (!isProjectionMode || !drawingState.isDrawing) return;
+      
+      const rect = drawCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      if (currentTool === 'rectangle' && drawingState.currentPoints.length >= 1) {
+        drawingState.currentPoints = [drawingState.currentPoints[0], { x, y }];
+        redrawShapes();
+      }
+    });
+
+    drawCanvas.addEventListener('dblclick', (e) => {
+      if (!isProjectionMode || !drawingState.isDrawing || currentTool !== 'lines') return;
+      
+      // finish line drawing on double click
+      if (drawingState.currentPoints.length >= 2) {
+        const shape = createShape(
+          'lines',
+          [...drawingState.currentPoints],
+          currentShader,
+          { ...currentParams }
+        );
+        shapes.push(shape);
+        selectedShapeId = shape.id;
+        drawingState.isDrawing = false;
+        drawingState.currentPoints = [];
+        redrawShapes();
+        updateShapePanel();
+      }
+    });
+
+    drawCanvas.addEventListener('mouseup', (e) => {
+      if (!isProjectionMode || !drawingState.isDrawing) return;
+      
+      if (currentTool === 'rectangle' && drawingState.currentPoints.length >= 2) {
+        const shape = createShape(
+          'rectangle',
+          [...drawingState.currentPoints],
+          currentShader,
+          { ...currentParams }
+        );
+        shapes.push(shape);
+        selectedShapeId = shape.id;
+        drawingState.isDrawing = false;
+        drawingState.currentPoints = [];
+        redrawShapes();
+        updateShapePanel();
+      }
+    });
+  }
+
   async function loadShaderAndCreatePipeline(shaderName: string) {
     const shaderCode = await loadShader(shaderName);
     pipeline = createRenderPipeline(device, format, shaderCode);
@@ -344,7 +580,57 @@ async function main() {
     });
   }
 
-  function render() {
+  async function getOrCreateShapePipeline(shape: Shape): Promise<GPURenderPipeline> {
+    let shapePipeline = shapePipelines.get(shape.id);
+    if (!shapePipeline) {
+      const shaderCode = await loadShader(shape.shader);
+      shapePipeline = createRenderPipeline(device, format, shaderCode);
+      shapePipelines.set(shape.id, shapePipeline);
+    }
+    return shapePipeline;
+  }
+
+  function getOrCreateShapeBuffer(shape: Shape): GPUBuffer {
+    let shapeBuffer = shapeBuffers.get(shape.id);
+    if (!shapeBuffer) {
+      shapeBuffer = createUniformBuffer(device, [canvas.width, canvas.height], 0, shape.params);
+      shapeBuffers.set(shape.id, shapeBuffer);
+    }
+    return shapeBuffer;
+  }
+
+  function updateShapeBuffer(shape: Shape) {
+    const shapeBuffer = getOrCreateShapeBuffer(shape);
+    const currentTime = (performance.now() - startTime) / 1000;
+    
+    const defs = shaderParamDefs[shape.shader] || [];
+    const hue = defs.find(d => d.name === 'hue') 
+      ? (shape.params.hue ?? defs.find(d => d.name === 'hue')!.default)
+      : 0;
+    const speed = defs.find(d => d.name === 'speed')
+      ? (shape.params.speed ?? defs.find(d => d.name === 'speed')!.default)
+      : 1;
+    const size = defs.find(d => d.name === 'size')
+      ? (shape.params.size ?? defs.find(d => d.name === 'size')!.default)
+      : 0.5;
+    const sparkliness = defs.find(d => d.name === 'sparkliness')
+      ? (shape.params.sparkliness ?? defs.find(d => d.name === 'sparkliness')!.default)
+      : 0;
+    
+    const data = new Float32Array([
+      canvas.width,
+      canvas.height,
+      currentTime,
+      hue,
+      speed,
+      size,
+      sparkliness,
+      0.0,
+    ]);
+    device.queue.writeBuffer(shapeBuffer, 0, data);
+  }
+
+  async function render() {
     if (!pipeline || !uniformBuffer) return;
 
     updateUniformBuffer();
@@ -360,16 +646,56 @@ async function main() {
       }],
     });
 
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
-    }));
-    pass.draw(3);
+    if (isProjectionMode && shapes.length > 0) {
+      // render each shape with its assigned shader
+      for (const shape of shapes) {
+        if (shape.type === 'rectangle' && shape.points.length >= 2) {
+          const [p1, p2] = shape.points;
+          const x = Math.max(0, Math.min(p1.x, p2.x));
+          const y = Math.max(0, Math.min(p1.y, p2.y));
+          const w = Math.min(canvas.width - x, Math.abs(p2.x - p1.x));
+          const h = Math.min(canvas.height - y, Math.abs(p2.y - p1.y));
+          
+          if (w > 0 && h > 0) {
+            // ensure pipeline and buffer exist
+            const shapePipeline = await getOrCreateShapePipeline(shape);
+            updateShapeBuffer(shape);
+            const shapeBuffer = getOrCreateShapeBuffer(shape);
+            
+            // set scissor rect to clip to shape bounds (x, y, width, height)
+            pass.setScissorRect(
+              Math.floor(x),
+              Math.floor(y),
+              Math.ceil(w),
+              Math.ceil(h)
+            );
+            
+            pass.setPipeline(shapePipeline);
+            pass.setBindGroup(0, device.createBindGroup({
+              layout: shapePipeline.getBindGroupLayout(0),
+              entries: [{ binding: 0, resource: { buffer: shapeBuffer } }],
+            }));
+            pass.draw(3);
+          }
+        }
+        // TODO: handle lines/polygons with stencil buffer or render to texture
+      }
+      // reset scissor rect to full canvas
+      pass.setScissorRect(0, 0, canvas.width, canvas.height);
+    } else {
+      // normal fullscreen rendering
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
+      }));
+      pass.draw(3);
+    }
+
     pass.end();
 
     device.queue.submit([encoder.finish()]);
-    requestAnimationFrame(render);
+    requestAnimationFrame(() => render());
   }
 
   render();

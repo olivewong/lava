@@ -14,10 +14,17 @@
   <div id="controls">
     <a id="github-link" href="https://github.com/olivewong/lava" target="_blank" rel="noopener noreferrer">🔗</a>
     <select id="shader-select"></select>
+    <button id="projection-toggle" title="projection mapping mode">🖌</button>
     <button id="music-toggle" title="make it respond to music/mic">♪</button>
     <button id="params-toggle">⚙</button>
   </div>
   <div id="params-panel" style="display: none;"></div>
+  <div id="projection-toolbar" style="display: none;">
+    <button id="tool-lines" class="tool-btn active" title="lines">📏</button>
+    <button id="tool-rectangle" class="tool-btn" title="rectangle">▭</button>
+  </div>
+  <div id="shape-panel" style="display: none;"></div>
+  <canvas id="draw-canvas" style="display: none;"></canvas>
   <canvas id="canvas"></canvas>
   <script type="module" src="dist/main.js"></script>
 </body>
