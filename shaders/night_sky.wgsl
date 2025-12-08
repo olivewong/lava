@@ -4,7 +4,7 @@ struct Globals {
   hue: f32,
   speed: f32,
   size: f32,
-  param2: f32,
+  sparkliness: f32,
   _pad: f32 
 }
 @group(0) @binding(0) var<uniform> U : Globals;
@@ -29,7 +29,7 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   var stars = 0.0;
   for (var i = 0u; i < 200u; i++) {
     let starId = f32(i);
-    let starPos = vec2<f32>(
+    var starPos = vec2<f32>(
       fract(sin(starId * 12.9898) * 43758.5453) * 2.0 - 1.0,
       fract(cos(starId * 78.233) * 43758.5453) * 2.0 - 1.0
     );
@@ -41,25 +41,57 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
     stars += brightness * twinkle * 0.5;
   }
   
-  // milky way band
-  let bandDist = abs(uv.y + sin(uv.x * 0.5 + t * 0.1) * 0.2);
-  let milkyWay = exp(-bandDist * 3.0) * 0.3;
+  // northern lights - flowing waves
+  let auroraY = uv.y * 0.5 + 0.3; // position in upper sky
+  let auroraBase = fbm(vec2<f32>(uv.x * U.size + t * 0.2, auroraY * 3.0 + t * 0.15));
   
-  // base sky color - dark blue to black
-  let skyDark = vec3<f32>(0.02, 0.02, 0.05);
-  let skyMid = vec3<f32>(0.05, 0.05, 0.1);
-  var skyColor = mix(skyDark, skyMid, (uv.y + 1.0) * 0.5);
+  // create flowing curtain effect
+  let curtain = sin(uv.x * 2.0 + t * 0.3) * 0.5 + 0.5;
+  let auroraHeight = smoothstep(0.4, 0.8, auroraY) * smoothstep(1.2, 0.8, auroraY);
+  let aurora = auroraBase * curtain * auroraHeight;
+  
+  // northern lights colors - green to cyan to purple
+  let green = vec3<f32>(0.2, 0.8, 0.4);
+  let cyan = vec3<f32>(0.1, 0.7, 0.8);
+  let purple = vec3<f32>(0.4, 0.2, 0.6);
+  
+  // mix colors based on position and time
+  let colorMix = (sin(uv.x * 1.5 + t * 0.2) * 0.5 + 0.5) * 0.5 + aurora * 0.1;
+  var auroraColor = mix(green, cyan, colorMix);
+  auroraColor = mix(auroraColor, purple, (sin(t * 0.5 + uv.x) * 0.5 + 0.5) * 0.03);
+  
+  // add sparkle
+  let sparkle = pow(noise(uv * 30.0 + vec2<f32>(t * 2.0, -t * 1.5)), 2.0) * U.sparkliness;
+  auroraColor += vec3<f32>(sparkle * 0.3, sparkle * 0.3, sparkle);
+  if (abs(U.hue) > 0.001) {
+    let auroraColor = applyHue(auroraColor, U.hue);
+  }
+  
+  // base sky color
+  let skyDark = vec3<f32>(0.0, 0.0, 0.0);
+let skyMid  = vec3<f32>(0.002, 0.002, 0.003);
+// TODO: fix
+//var skyColor = mix(skyDark, skyMid, clamp((uv.y + 1.0), 0.0, 1.0));
+
+var skyColor = skyDark;
   
   // add stars
   skyColor += vec3<f32>(stars);
   
-  // add milky way
-  skyColor += vec3<f32>(milkyWay * 0.5, milkyWay * 0.6, milkyWay * 0.8);
+  // add northern lights
+  skyColor += auroraColor * aurora * 1.0;
   
   // apply hue shift if non-zero
-  if (abs(U.hue) > 0.001) {
-    let rgb = applyHue(skyColor, U.hue);
-    return vec4<f32>(rgb, 1.0);
+  // TODO: just make that the light
+  // this broke thee aurora and made them too blobby todo add glow back
+  if skyColor.r < 0.8 {
+  skyColor *= ( skyColor.r);
+  skyColor.b *= 1.1;
+  }
+  if skyColor.r < 0.45 {
+  //if skyColor.r < 0.2 { if u do this it does a cool eeffect see dec 7 screenshot but not right
+  skyColor *= ( skyColor.r);
+  skyColor.b *= 1.1;
   }
   
   return vec4<f32>(skyColor, 1.0);
