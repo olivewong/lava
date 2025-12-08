@@ -84,6 +84,7 @@ var skyColor = skyDark;
   // apply hue shift if non-zero
   // TODO: just make that the light
   // this broke thee aurora and made them too blobby todo add glow back
+  // and the twinkliness 
   if skyColor.r < 0.8 {
   skyColor *= ( skyColor.r);
   skyColor.b *= 1.1;
