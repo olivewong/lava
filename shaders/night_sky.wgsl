@@ -7,6 +7,7 @@ struct Globals {
   sparkliness: f32,
   _pad: f32 
 }
+// note: hue is unused but kept for uniform buffer compatibility
 @group(0) @binding(0) var<uniform> U : Globals;
 
 @vertex
@@ -63,9 +64,6 @@ fn fs(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   // add sparkle
   let sparkle = pow(noise(uv * 30.0 + vec2<f32>(t * 2.0, -t * 1.5)), 2.0) * U.sparkliness;
   auroraColor += vec3<f32>(sparkle * 0.3, sparkle * 0.3, sparkle);
-  if (abs(U.hue) > 0.001) {
-    let auroraColor = applyHue(auroraColor, U.hue);
-  }
   
   // base sky color
   let skyDark = vec3<f32>(0.0, 0.0, 0.0);

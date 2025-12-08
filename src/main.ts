@@ -88,6 +88,10 @@ function createRenderPipeline(
   });
 }
 
+function getShaderDisplayName(filename: string): string {
+  return filename.replace(/_/g, ' ');
+}
+
 async function getAvailableShaders(): Promise<string[]> {
   // for now, hardcode. could fetch a manifest or scan directory in the future
   return ['metaballs', 'pool_reflections', 'sun', 'night_sky' ];
@@ -141,7 +145,7 @@ async function main() {
   shaders.forEach(name => {
     const option = document.createElement('option');
     option.value = name;
-    option.textContent = name;
+    option.textContent = getShaderDisplayName(name);
     if (name === currentShader) option.selected = true;
     select.appendChild(option);
   });
